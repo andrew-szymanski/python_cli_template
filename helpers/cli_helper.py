@@ -41,7 +41,7 @@ class CompositeHelper(object):
         self.dict_config = {}   # dictionary, see cdh_manager.cfg example
         self.__cm_cdh__ = None
         self.__boto_ec2__ = None
-        #self.data = CdhAwsInstances(logger=self.logger)
+        self.data = DataObjectSample(logger=self.logger)
         
 
     def configure(self, cfg=None):
@@ -80,163 +80,7 @@ class CompositeHelper(object):
         self.dict_config = new_dict
         self.logger.info("%s aws region: [%s]" % (LOG_INDENT, self.dict_config[AWS_REGION]))
         self.logger.info("%s boto cfg: [%s]" % (LOG_INDENT, self.dict_config[AWS_BOTO_CFG]))
-        
 
-    def cm_connect(self):
-        """Create "connection" object - i.e. CM API object
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        self.logger.info("connecting to CM on: [%s]" % self.dict_config[CM_HOSTNAME])
-        
-        # and now create api object
-        self.__is_connected__ = False
-        self.__cm_cdh__ = cm_helper.ClouderaManagerHelper(logger=self.logger)
-        
-        try:
-            self.__cm_cdh__.connect(cm_hostname=self.dict_config[CM_HOSTNAME],
-                                username=self.dict_config[CM_USERNAME], 
-                                password=self.dict_config[CM_PASSWORD])
-        except Exception, e:
-            raise Exception("Failed to connect to CM on [%s], error: [%s]" % (self.dict_config[CM_HOSTNAME],e))
-            
-        #
-        if not self.__cm_cdh__:
-            raise Exception("Failed to connect to CM on [%s]" % (self.dict_config[CM_HOSTNAME]))
-
-        # the above doesn't mean anything - try connection to make sure all is well
-        clusters = list()
-        try:
-            clusters = self.get_clusters()
-        except Exception, e:
-            raise Exception("Failed to connect to CM on [%s], error: [%s]" % (self.dict_config[CM_HOSTNAME],e))
-
-
-        # print clusters
-        self.logger.info("Connection OK, clusters:")
-        for cluster in clusters:
-            self.logger.info("%s name: [%s], version: [%s]" % (LOG_INDENT, cluster.name, cluster.version) )
-
-        self.__is_connected__ = True
-
-    def boto_connect(self):
-        """Create "connection" object - i.e. CM API object
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        self.logger.info("connecting to boto, region: [%s]" % self.dict_config[AWS_REGION])
-        
-        self.__boto_ec2__ = boto_helper.BotoHelperEC2(logger=self.logger,aws_region=self.dict_config[AWS_REGION])
-        if not self.__boto_ec2__:
-            raise Exception("Failed to create boto object, cfg: [%s]" % (self.dict_config[AWS_BOTO_CFG],e))
-
-        try:
-            self.__boto_ec2__.connect(aws_boto_cfg=self.dict_config[AWS_BOTO_CFG], aws_region=self.dict_config[AWS_REGION])
-            #self.__boto_ec2__.get_region()
-            self.__boto_ec2__.get_instances()
-        except Exception, e:
-            raise Exception("Failed to connect to boto, error: [%s]" % (e))
-        
-    
-    def connect(self):
-        """ connect to both boto and CM API
-        """
-        self.cm_connect()
-        self.boto_connect()
-        
-
-
-    def reload_composite_data(self):
-        """ load composite (combined) CDH / AWS data
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        
-        # we will use AWS instances as a authoritative list of instances
-        # get list of all hosts
-        self.logger.info("reloading CDH / AWS data...")
-        cm_hosts = self.__cm_cdh__.get_instances()
-        aws_instances = self.__boto_ec2__.get_instances()
-        self.data.reload(cm_hosts, aws_instances)
-        self.logger.info("[%s] CDH hosts reloaded" % (len(self.data)) )
-
-
-
-    def get_clusters(self):
-        """ get list of clusters
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        list_clusters = self.__cm_cdh__.get_clusters()
-        return list_clusters  
-        
-
-    def get_aws_region(self):
-        """ get region (specified in config file)
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        aws_region = self.dict_config[AWS_REGION]
-        return aws_region  
-        
-    def get_instances(self, key=None):
-        """ get a dict of composite instance data
-        """
-        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
-        return self.data
-        
-
-    
-    def reload(self, cm_instances=None, aws_instances=None):
-        """ add / refresh CdhAwsInstance object
-        """
-        self.logger.debug("%s::%s starting..." % (self.__class__.__name__, inspect.stack()[0][3]))
-        self.logger.debug("[%s] CDH instances" % (len(cm_instances)) )
-        self.logger.debug("[%s] All AWS instances" % (len(aws_instances)) )
-        
-        # create a new dict coz it is faster then clearing.. not that it matters with our poxy tiny data....
-        self.data = dict()
-        
-        # and validate only now - so we never point to the old data... even if new is empty / invalid
-        if not cm_instances:
-            self.logger.warning("no CDH hosts passed")
-            return
-        
-        # loop through CM hosts and create key / value entries
-        for host in cm_instances:
-            hostname = host.hostname
-            instance = CdhAwsInstance()
-            instance.private_dns_name = hostname
-            instance.cdh_host = host
-            # and create / udpate dict entry
-            self.data[instance.private_dns_name] = instance
-            
-        # go through a list of AWS instances, matching them to CDH instances
-        for aws_instance in aws_instances:
-            private_dns_name = aws_instance.private_dns_name
-            self.logger.debug("   AWS instance: [%s]" % private_dns_name)
-            try:
-                cdh_aws_instance = self.data[private_dns_name]
-            except KeyError:
-                self.logger.debug("      skipped (not CDH,)")
-                continue
-            
-            # save ref to boto EC2 object
-            self.logger.debug("      added")
-            cdh_aws_instance.aws_instance = aws_instance
-            
-            # and instance name as well if we have it
-            try:
-                cdh_aws_instance.aws_instance_name = cdh_aws_instance.aws_instance.__dict__['tags']['Name']
-            except Exception, e:
-                pass
-            
-            
-            
-        # check for CDH instances without AWS data
-        aws_count = 0
-        for instance in self.data.itervalues():
-            if not instance.aws_instance:
-                self.logger.error("CDH instance [%s], no AWS instance found, unpredictable results might occur")
-            else:
-                aws_count = aws_count + 1
-        
-        self.logger.info("Reloaded combined CDH/AWS data: [%s] CDH and [%s] AWS instances matched" % (len(self.data), aws_count) )
         
         
 #    def __len__(self): 
@@ -258,10 +102,8 @@ class CompositeHelper(object):
     
     
 
-class CdhAwsInstance:
-    ''' Single Intance object - CM and boto combined data
-    Some AWS / CDH object attributes are duplicated as member variables 
-    for sort purposes
+class DataObjectSample:
+    ''' data object 
     '''
     def __init__(self, *args, **kwargs):
         """Create an empty object
@@ -270,3 +112,8 @@ class CdhAwsInstance:
         self.cdh_host = None             # Cloudera Manager API ApiHost object
         self.aws_instance = None         # boto AWS EC2 object
         self.aws_instance_name = None
+
+
+
+
+
