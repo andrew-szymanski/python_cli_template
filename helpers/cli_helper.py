@@ -81,6 +81,14 @@ class CompositeHelper(object):
         self.logger.info("%s aws region: [%s]" % (LOG_INDENT, self.dict_config[AWS_REGION]))
         self.logger.info("%s boto cfg: [%s]" % (LOG_INDENT, self.dict_config[AWS_BOTO_CFG]))
 
+    def run(self, cfg=None):
+        """do something
+        """        
+        self.logger.debug("%s::%s starting..." %  (self.__class__.__name__ , inspect.stack()[0][3])) 
+        self.logger.debug("%s::%s DONE" %  (self.__class__.__name__ , inspect.stack()[0][3])) 
+        
+        
+        
         
         
 #    def __len__(self): 

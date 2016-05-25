@@ -57,6 +57,8 @@ class Manager(object):
             self.cli_helper.configure(cfg=config_file)
         except Exception, e:
             raise Exception("error while trying to configure CompositeHelper: [%s]" % e)
+            
+        self.cli_helper.run()
         
         
         # Check connection to CDH CM
